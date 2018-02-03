@@ -15,38 +15,39 @@ _BATCH_NORM_DECAY = 0.997
 
 
 
-def batch_norm_layer(inputs, is_training, init, name, reuse=None):
+def batch_norm_layer(inputs, init, name, is_training, reuse=None):
   """Performs a batch normalization followed by a ReLU."""
+
 
   with tf.variable_scope(name,reuse=reuse):
       shape = inputs.get_shape().as_list()
 
-      gamma = tf.get_variable('gamma', shape[-1], initializer=init['weight'], trainable=True)
-      beta = tf.get_variable('beta', shape[-1], initializer=init['bias'], trainable=True)
-      moving_avg = tf.get_variable('moving_avg', shape[-1],initializer=init['running_mean'],trainable=False )
-      moving_var = tf.get_variable('moving_var', shape[-1], initializer=init['running_var'], trainable=False)
+      gamma = tf.get_variable('gamma',  initializer=tf.constant(init['weight']), trainable=True)
+      beta = tf.get_variable('beta', initializer=tf.constant(init['bias']), trainable=True)
+      moving_avg = tf.get_variable('moving_avg',initializer=tf.constant(init['running_mean']),trainable=False )
+      moving_var = tf.get_variable('moving_var',  initializer=tf.constant(init['running_var']), trainable=False)
 
-      if is_training:
-          avg, var = tf.nn.moments(inputs, range(len(shape)-1))
-          update_moving_avg = moving_averages.assign_moving_average(moving_avg, avg, _BATCH_NORM_DECAY)
-          update_moving_var = moving_averages.assign_moving_average(moving_var, var, _BATCH_NORM_DECAY)
-          control_inputs = [update_moving_avg, update_moving_var]
-      else:
-          avg = moving_avg
-          var = moving_var
-          control_inputs = []
+
+      avg, var = tf.nn.moments(inputs, range(len(shape)-1))
+      update_moving_avg = moving_averages.assign_moving_average(moving_avg, avg, _BATCH_NORM_DECAY)
+      update_moving_var = moving_averages.assign_moving_average(moving_var, var, _BATCH_NORM_DECAY)
+      control_inputs = [update_moving_avg, update_moving_var]
+
+      # avg, var, control_inputs = tf.cond(is_training,
+      #                                    lambda:(avg, var, control_inputs),
+      #                                    lambda: (moving_avg, moving_var, []))
       with tf.control_dependencies(control_inputs):
           output = tf.nn.batch_normalization(inputs,avg, var, offset=beta, scale=gamma, variance_epsilon=_BATCH_NORM_EPSILON)
   return output
 
 
 def _batch_norm(inputs, is_training, init, name='bn'):
-
-    return tf.cond(
-        is_training,
-        lambda: batch_norm_layer(inputs,True, init, name, reuse=None),
-        lambda: batch_norm_layer(inputs, False, init, name, reuse=True)
-    )
+    return batch_norm_layer(inputs,init, name, is_training , reuse=None)
+    # return tf.cond(
+    #     is_training,
+    #     lambda: batch_norm_layer(inputs,init, name, is_training = True, reuse=True),
+    #     lambda: batch_norm_layer(inputs, init, name,is_training = False, reuse=True)
+    # )
 
 
 
@@ -54,8 +55,8 @@ def _conv2d(inputs, out_channel, kernel_size, strides, init, pad='SAME', name='c
 
     in_channel = (inputs.get_shape().as_list())[-1]
     with tf.variable_scope(name):
-        kernel = tf.get_variable('kernel',[kernel_size,kernel_size,in_channel,out_channel],
-                                 dtype=tf.float32, initializer=init['weight]'])
+        initTensor = tf.constant(init['weight'])
+        kernel = tf.get_variable('kernel', initializer=initTensor)
     return tf.nn.conv2d(inputs, kernel, [1, strides, strides, 1], pad)
 
 
@@ -70,13 +71,11 @@ def _relu(inputs, leakness=0.0, name=None):
 def final_layer(inputs,init, num_classes, name):
     with tf.variable_scope(name) as scope:
         inputs = tf.reshape(inputs,[-1,512])
-        weights = tf.get_variable('Weights',[512,num_classes],dtype=tf.float32,
-                                  initializer=init['weights'])
-        bias = tf.get_variable('bias',[num_classes],dtype=tf.float32,
-                                  initializer=init['bias'])
+        weights = tf.get_variable('Weights', initializer=tf.constant(init['weight']))
+        bias = tf.get_variable('bias', initializer=tf.constant(init['bias']))
         inputs = tf.nn.bias_add(tf.matmul(inputs,weights),bias)
         inputs = tf.nn.softmax(inputs)
-
+    return inputs
 
 
 def building_block(inputs, out_channel, is_training, init, projection_shortcut, strides,
@@ -92,15 +91,15 @@ def building_block(inputs, out_channel, is_training, init, projection_shortcut, 
 
       inputs = _conv2d(
           inputs=inputs,out_channel=out_channel,kernel_size=3, init=init['conv1'], strides=strides,
-          )
+          name='conv1')
 
-      inputs = _batch_norm(inputs, is_training, init['bn1'])
+      inputs = _batch_norm(inputs, is_training, init['bn1'], name='bn1')
       inputs = _relu(inputs)
 
       inputs = _conv2d(
-          inputs=inputs,  out_channel=out_channel,kernel_size=3, init=['conv2'], strides=1,
-          )
-      inputs = _batch_norm(inputs, is_training, init[2]['bn2'])
+          inputs=inputs,  out_channel=out_channel,kernel_size=3, init=init['conv2'], strides=1,
+          name='conv2')
+      inputs = _batch_norm(inputs, is_training, init['bn2'],name='bn2')
 
       inputs += shortcut
       inputs = _relu(inputs)
@@ -137,9 +136,9 @@ def objective_resnet_model(block_fn, layers,  num_classes):
   """
   def model(inputs, is_training, init):
     """Constructs the ResNet model given the inputs."""
-    with tf.get_variable('initial_conv') as scope:
+    with tf.variable_scope('initial_conv') as scope:
         inputs = _conv2d(
-            inputs=inputs, kernel_size=7, out_channel=64, strides=2,init=init['conv1']
+            inputs=inputs, out_channel=64, kernel_size=7, strides=2, init=init['conv1']
         )
         inputs = _batch_norm(inputs,is_training,init=init['bn1'])
         inputs = _relu(inputs)
@@ -167,7 +166,7 @@ def objective_resnet_model(block_fn, layers,  num_classes):
 
 
     inputs = tf.nn.avg_pool(
-        value=inputs, ksize=7, strides=1, padding='VALID',name='final_avg_pool'
+        value=inputs, ksize=[1,7,7,1], strides=[1,1,1,1], padding='VALID',name='final_avg_pool'
     )
 
     inputs = final_layer(inputs,init['fc'], num_classes, name='fc')
@@ -191,6 +190,3 @@ def resnet_v1(resnet_size, num_classes):
   return objective_resnet_model(
       params['block'], params['layers'], num_classes)
 
-with tf.Session() as sess:
-    sess.run(tf.global_variables_initializer())
-    model = sess.run()
