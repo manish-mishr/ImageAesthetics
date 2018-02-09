@@ -1,6 +1,7 @@
 import torchvision.models as models
-
 import numpy as np
+
+output_path = '/home/manish/projects/ResNetModel/modelWeight'
 
 def buildDict(words, ind, dict):
     if ind == (len(words)-1):
@@ -15,7 +16,7 @@ def getWeights():
     model_dict = resnet.state_dict()
 
     keyWeights = {}
-
+    getpretrainedWts(keyWeights)
     for i, (key,value) in enumerate(model_dict.iteritems()):
         ind = int(i/5)
         rem = i%5
@@ -36,10 +37,31 @@ def getWeights():
         wtDict[words[-1]] = wt
     return keyWeights
 
+
+
+
+def getpretrainedWts(dict):
+    layers = ['BalancingElement', 'ColorHarmony', 'Content', 'DoF', 'Light', 'MotionBlur',
+              'Object', 'Repetition', 'RuleOfThirds', 'Symmetry', 'VividColor']
+
+    for layer in layers:
+        wts = 'fc9_' + layer
+        net_weights = np.load(output_path+'/'+wts+'_0.npy')
+        net_weights = np.transpose(net_weights)
+        net_bias = np.load(output_path+'/'+wts+'_1.npy')
+        dict[layer] = {}
+        dict[layer]['wt'] = net_weights
+        dict[layer]['bias'] = net_bias
+
+
+
+
+
+
 if __name__ == '__main__':
+
     wts  = getWeights()
-    for key in wts['layer2'].keys():
-        print key
+    print wts.keys()
 
 
 #

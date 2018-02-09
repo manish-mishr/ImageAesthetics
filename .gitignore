@@ -1,1 +1,4 @@
 ./.idea/*
+./data_dir/
+./modelWeight/
+./*.zip

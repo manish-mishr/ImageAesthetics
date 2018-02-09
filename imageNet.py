@@ -13,11 +13,11 @@ import vgg_preprocessing
 
 _DEFAULT_IMAGE_SIZE = 224
 _NUM_CHANNELS = 3
-_NUM_CLASSES = 1001
+
 
 _NUM_IMAGES = {
-    'train': 1281167,
-    'validation': 50000,
+    'train': 8496,
+    'validation': 500,
 }
 
 _FILE_SHUFFLE_BUFFER = 1024
@@ -79,7 +79,7 @@ def parse_record(raw_record, is_training):
       tf.reshape(parsed['image/class/label'], shape=[]),
       dtype=tf.int32)
 
-  return image, tf.one_hot(label, _NUM_CLASSES)
+  return image, tf.one_hot(label, )
 
 
 def input_fn(is_training, data_dir, batch_size, num_epochs=1):

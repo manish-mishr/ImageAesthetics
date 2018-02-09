@@ -1,19 +1,3 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# ==============================================================================
-"""Functions for running Resnet that are shared across datasets."""
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -51,24 +35,21 @@ def resnet_model_fn(features, labels, mode, model_class,
   # Generate a summary node for the images
   tf.summary.image('images', features, max_outputs=6)
 
-  model = model_class(resnet_size, data_format)
-  logits = model(features, mode == tf.estimator.ModeKeys.TRAIN)
+  model = model_class(resnet_size)
+  predictions = model(features, mode == tf.estimator.ModeKeys.TRAIN)
 
-  predictions = {
-      'classes': tf.argmax(logits, axis=1),
-      'probabilities': tf.nn.softmax(logits, name='softmax_tensor')
-  }
+
 
   if mode == tf.estimator.ModeKeys.PREDICT:
     return tf.estimator.EstimatorSpec(mode=mode, predictions=predictions)
 
   # Calculate loss, which includes softmax cross entropy and L2 regularization.
-  cross_entropy = tf.losses.softmax_cross_entropy(
-      logits=logits, onehot_labels=labels)
+  mean_error = tf.losses.mean_squared_error(
+      labels=labels, predictions=predictions)
 
-  # Create a tensor named cross_entropy for logging purposes.
-  tf.identity(cross_entropy, name='cross_entropy')
-  tf.summary.scalar('cross_entropy', cross_entropy)
+  # Create a tensor named mean_error for logging purposes.
+  tf.identity(mean_error, name='mean_error')
+  tf.summary.scalar('mean_error', mean_error)
 
   # If no loss_filter_fn is passed, assume we want the default behavior,
   # which is that batch_normalization variables are excluded from loss.
@@ -77,7 +58,7 @@ def resnet_model_fn(features, labels, mode, model_class,
       return 'batch_normalization' not in name
 
   # Add weight decay to the loss.
-  loss = cross_entropy + weight_decay * tf.add_n(
+  loss = mean_error + weight_decay * tf.add_n(
       [tf.nn.l2_loss(v) for v in tf.trainable_variables()
        if loss_filter_fn(v.name)])
 
@@ -101,20 +82,20 @@ def resnet_model_fn(features, labels, mode, model_class,
   else:
     train_op = None
 
-  accuracy = tf.metrics.accuracy(
-      tf.argmax(labels, axis=1), predictions['classes'])
-  metrics = {'accuracy': accuracy}
-
-  # Create a tensor named train_accuracy for logging purposes
-  tf.identity(accuracy[1], name='train_accuracy')
-  tf.summary.scalar('train_accuracy', accuracy[1])
+  # accuracy = tf.metrics.accuracy(
+  #     tf.argmax(labels, axis=1), predictions['classes'])
+  # metrics = {'accuracy': accuracy}
+  #
+  # # Create a tensor named train_accuracy for logging purposes
+  # tf.identity(accuracy[1], name='train_accuracy')
+  # tf.summary.scalar('train_accuracy', accuracy[1])
 
   return tf.estimator.EstimatorSpec(
       mode=mode,
       predictions=predictions,
       loss=loss,
       train_op=train_op,
-      eval_metric_ops=metrics)
+      )
 
 
 def resnet_main(flags, model_function, input_function):
@@ -127,14 +108,13 @@ def resnet_main(flags, model_function, input_function):
       model_fn=model_function, model_dir=flags.model_dir, config=run_config,
       params={
           'resnet_size': flags.resnet_size,
-          'data_format': flags.data_format,
           'batch_size': flags.batch_size,
       })
 
   for _ in range(flags.train_epochs // flags.epochs_per_eval):
     tensors_to_log = {
         'learning_rate': 'learning_rate',
-        'cross_entropy': 'cross_entropy',
+        'mean_error': 'mean_error',
         'train_accuracy': 'train_accuracy'
     }
 
