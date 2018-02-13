@@ -11,6 +11,7 @@ import time
 import numpy as np
 import dataLoader
 
+
 ######## data loader #####################
 output_path = '/home/manish/projects/ResNetModel/modelWeight'
 dataloaders, dataset_sizes = dataLoader.getdataLoader()
